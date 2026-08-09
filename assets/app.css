@@ -13,18 +13,18 @@
 }
 
 :root {
-  /* Los tres primarios — señal, nunca decoración */
-  --rojo: #e30613;
-  --azul: #0057b7;
-  --amarillo: #ffd200;
+  /* Los tres primarios — señal, nunca decoración (paleta DesignQuizz) */
+  --rojo: #d02e26;
+  --azul: #1c50a0;
+  --amarillo: #f5c518;
 
-  --negro: #111111;
+  --negro: #14121a;
   --blanco: #ffffff;
   --papel: #ffffff;
-  --tinta: #111111;
-  --gris: #6b6b6b;
-  --gris-claro: #ededed;
-  --linea: #111111;
+  --tinta: #14121a;
+  --gris: #6a6870;
+  --gris-claro: #e7e6ea;
+  --linea: #14121a;
 
   --unidad: 8px; /* módulo de la retícula */
   --borde: 2px; /* grosor de línea estándar */
@@ -40,24 +40,24 @@
    Objetividad ante todo — sin degradados. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --papel: #0d0d0d;
-    --tinta: #f4f4f4;
-    --negro: #f4f4f4;
-    --blanco: #0d0d0d;
-    --gris: #9a9a9a;
-    --gris-claro: #1e1e1e;
-    --linea: #f4f4f4;
+    --papel: #100e15;
+    --tinta: #f4f2f7;
+    --negro: #f4f2f7;
+    --blanco: #100e15;
+    --gris: #9a97a3;
+    --gris-claro: #201d28;
+    --linea: #f4f2f7;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --papel: #0d0d0d;
-  --tinta: #f4f4f4;
-  --negro: #f4f4f4;
-  --blanco: #0d0d0d;
-  --gris: #9a9a9a;
-  --gris-claro: #1e1e1e;
-  --linea: #f4f4f4;
+  --papel: #100e15;
+  --tinta: #f4f2f7;
+  --negro: #f4f2f7;
+  --blanco: #100e15;
+  --gris: #9a97a3;
+  --gris-claro: #201d28;
+  --linea: #f4f2f7;
   color-scheme: dark;
 }
 
