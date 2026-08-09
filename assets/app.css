@@ -669,7 +669,10 @@ main {
 .game-top .cell svg,
 .dropzone .big svg,
 .q-meta svg,
-.eyebrow svg {
+.eyebrow svg,
+.label svg,
+.seg button svg,
+.game-pill svg {
   width: 18px;
   height: 18px;
   vertical-align: -0.18em;

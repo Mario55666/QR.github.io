@@ -3,7 +3,7 @@
    Estrategia: cache-first para los recursos propios; para navegaciones,
    devuelve index.html desde caché si no hay red. */
 
-var VERSION = "quiz-v1.1.0";
+var VERSION = "quiz-v1.1.1";
 var SHELL = [
   "./",
   "./index.html",
