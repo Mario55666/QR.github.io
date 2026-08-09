@@ -1,0 +1,6 @@
+pregunta,opcion1,opcion2,opcion3,opcion4,correcta,tiempo
+"¿Cuál es la capital de Perú?",Lima,Cusco,Arequipa,Trujillo,1,20
+"¿Cuánto es 2 + 2?",3,4,5,,2,15
+"El Sol es una estrella",Verdadero,Falso,,,V,10
+"¿Qué planeta es el planeta rojo?",Venus,Marte,Júpiter,Saturno,2,15
+"¿Cuáles son océanos? (varias)",Pacífico,Atlántico,Everest,Sáhara,"1,2",25

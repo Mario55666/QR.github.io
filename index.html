@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>QUIZ · Cuestionarios interactivos con acceso por QR</title>
+    <meta
+      name="description"
+      content="Plataforma en castellano para diseñar y jugar cuestionarios interactivos tipo concurso. El docente carga preguntas desde Word, Markdown o CSV y comparte un código QR. PWA instalable y offline."
+    />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="QUIZ" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="stylesheet" href="./assets/app.css" />
+    <script>
+      // Aplica el tema guardado antes de pintar para evitar parpadeo.
+      try {
+        var s = JSON.parse(localStorage.getItem("qr_quiz_v1") || "{}");
+        if (s.theme) document.documentElement.setAttribute("data-theme", s.theme);
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="toasts" class="toast-wrap"></div>
+
+    <noscript>
+      <div style="padding: 24px; font-family: system-ui, sans-serif">
+        <h1>QUIZ</h1>
+        <p>Esta aplicación necesita JavaScript activado para funcionar.</p>
+      </div>
+    </noscript>
+
+    <script src="./assets/qrcode.js"></script>
+    <script src="./assets/parse.js"></script>
+    <script src="./assets/app.js"></script>
+  </body>
+</html>
