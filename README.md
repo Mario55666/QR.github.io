@@ -7,7 +7,14 @@ reloj. Es una **PWA**: se instala en el dispositivo y **funciona sin conexión**
 
 Diseño visual: **Bauhaus / Estilo Tipográfico Internacional (suizo)** — fondo blanco, retícula
 visible, los tres primarios (rojo, azul, amarillo) usados como señal, tipografía de palo seco
-(Inter/Helvética) alineada en bandera.
+(Helvética/Inter) alineada en bandera.
+
+**Novedades:**
+- **Editor visual tipo Kahoot** para el docente: riel de preguntas, mosaicos de colores
+  editables en línea, marcar la correcta, multimedia (emoji/imagen), tiempo/puntos/tipo. La
+  importación desde Word/Markdown/CSV sigue disponible (botón «Importar»).
+- **Funciones interactivas** al jugar: modo **Apuesta** (banca de fichas + multiplicador de
+  racha), **XP y niveles**, **logros** y una vista **Progreso** con estadísticas persistentes.
 
 > **Sin servidor.** El cuestionario completo viaja **codificado y comprimido dentro del enlace/QR**.
 > No hay base de datos ni backend: por eso puede vivir en GitHub Pages y funcionar offline.

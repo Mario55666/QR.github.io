@@ -1,7 +1,7 @@
 /* =========================================================================
-   app.js — QUIZ (PWA). Router, acceso docente, QR, y motor de juego.
-   Estilo Bauhaus / Tipográfico Internacional. Todo funciona sin servidor:
-   el cuestionario viaja codificado en el enlace/QR.
+   app.js — QUIZ (PWA). Router, editor visual tipo Kahoot, QR y motor de juego
+   con funciones interactivas (apuestas, racha, XP/niveles, logros, estadísticas).
+   Estilo Bauhaus / DesignQuizz. Todo sin servidor: el cuestionario viaja en el QR.
    ========================================================================= */
 (function () {
   "use strict";
@@ -31,6 +31,13 @@
     sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>',
     moon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
     arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+    dup: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="1"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+    image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5L5 20"/></svg>',
+    chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+    trophy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>',
+    flame: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2s5 4.5 5 10a5 5 0 0 1-10 0c0-1.5.5-2.7 1-3.5C8 10 9 12 9 12s-1-6 3-10z"/></svg>',
+    coin: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>',
   };
   // Formas geométricas (posición de respuesta)
   var GLYPH = [
@@ -42,6 +49,16 @@
     '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l7 4v10l-7 4-7-4V7z"/></svg>',
   ];
   var KEYS = ["1", "2", "3", "4", "5", "6"];
+
+  // Logros
+  var ACHV = [
+    { id: "inicio", em: "🎬", t: "Primera partida", d: "Juega tu primer cuestionario", test: function (s) { return s.games >= 1; } },
+    { id: "racha5", em: "🔥", t: "En racha", d: "Consigue una racha de 5", test: function (s) { return s.bestStreak >= 5; } },
+    { id: "perfecto", em: "🌟", t: "Sin fallos", d: "Termina con 100% de aciertos", test: function (s) { return s.perfect; } },
+    { id: "nivel5", em: "🚀", t: "Nivel 5", d: "Alcanza el nivel 5", test: function (s) { return level(s.xp) >= 5; } },
+    { id: "ricacho", em: "💰", t: "Gran apostador", d: "Llega a 5000 en modo apuesta", test: function (s) { return s.maxBank >= 5000; } },
+    { id: "veterano", em: "🏆", t: "Veterano", d: "Completa 10 partidas", test: function (s) { return s.games >= 10; } },
+  ];
 
   // ----------------------------- utilidades -----------------------------
   function el(html) { var d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstChild; }
@@ -61,9 +78,17 @@
 
   // ----------------------------- almacenamiento -----------------------------
   var STORE = "qr_quiz_v1";
-  var db = { teacherHash: "", library: [], scores: {}, theme: "", name: "" };
+  var db = { teacherHash: "", library: [], scores: {}, theme: "", name: "", stats: null };
+  function defStats() { return { xp: 0, games: 0, correct: 0, questions: 0, bestScore: 0, bestStreak: 0, maxBank: 0, perfect: false, achievements: [], history: [] }; }
   function saveDb() { try { localStorage.setItem(STORE, JSON.stringify(db)); } catch (e) {} }
-  function loadDb() { try { var r = localStorage.getItem(STORE); if (r) db = Object.assign(db, JSON.parse(r)); } catch (e) {} }
+  function loadDb() {
+    try { var r = localStorage.getItem(STORE); if (r) db = Object.assign(db, JSON.parse(r)); } catch (e) {}
+    if (!db.stats) db.stats = defStats();
+  }
+
+  // XP / nivel
+  function level(xp) { return Math.floor(Math.sqrt((xp || 0) / 100)) + 1; }
+  function xpForLevel(l) { return (l - 1) * (l - 1) * 100; }
 
   // ----------------------------- hash contraseña -----------------------------
   async function sha256Hex(str) {
@@ -71,7 +96,6 @@
       var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
       return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
     }
-    // Reserva (contexto no seguro): hash simple, suficiente como reja de aula
     var h = 5381; for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
     return "x" + h.toString(16);
   }
@@ -87,6 +111,7 @@
         if (q.type && q.type !== "quiz") o.k = q.type === "truefalse" ? "v" : "m";
         if (q.points === "double") o.p = 2; else if (q.points === "none") o.p = 0;
         if (q.emoji) o.e = q.emoji;
+        if (q.image) o.g = q.image;
         return o;
       }),
     };
@@ -100,7 +125,7 @@
           time: o.s || 20,
           type: o.k === "v" ? "truefalse" : o.k === "m" ? "multi" : "quiz",
           points: o.p === 2 ? "double" : o.p === 0 ? "none" : "std",
-          emoji: o.e || "",
+          emoji: o.e || "", image: o.g || "",
         };
       }),
     };
@@ -136,9 +161,7 @@
     }
     return unpackQuiz(JSON.parse(new TextDecoder().decode(bytes)));
   }
-  function shareURL(payload) {
-    return location.origin + location.pathname + "#j=" + payload;
-  }
+  function shareURL(payload) { return location.origin + location.pathname + "#j=" + payload; }
 
   // ----------------------------- QR -----------------------------
   function makeQR(text) {
@@ -157,6 +180,14 @@
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + size + " " + size + '" shape-rendering="crispEdges"><rect width="' + size + '" height="' + size + '" fill="#ffffff"/><g fill="#111111">' + rects + "</g></svg>";
   }
 
+  // ----------------------------- modelo de pregunta / cuestionario -----------------------------
+  function newQuestion() { return { text: "", choices: ["", "", "", ""], correct: [], time: 20, points: "std", type: "quiz", emoji: "", image: "" }; }
+  function newDraft() { return { title: "", questions: [newQuestion()] }; }
+  function qReady(q) {
+    var filled = q.choices.filter(function (c) { return (c || "").trim(); }).length;
+    return (q.text || "").trim() && filled >= 2 && q.correct.length >= 1 && q.correct.every(function (i) { return q.choices[i] && q.choices[i].trim(); });
+  }
+
   // =====================================================================
   //  ROUTER
   // =====================================================================
@@ -165,21 +196,20 @@
   function parseHash() {
     var h = location.hash || "";
     if (h.indexOf("#j=") === 0) return { view: "play", payload: h.slice(3) };
-    if (h.indexOf("j=") === 1) return { view: "play", payload: h.slice(3) };
-    if (h === "#docente" || h === "#/docente") return { view: "teacher" };
-    if (h === "#unirse" || h === "#/unirse") return { view: "join" };
+    if (h === "#docente") return { view: "teacher" };
+    if (h === "#unirse") return { view: "join" };
+    if (h === "#progreso") return { view: "stats" };
     return { view: "home" };
   }
-
   function route() {
     var r = parseHash();
     if (r.view === "play") return viewPlayLoad(r.payload);
     if (r.view === "teacher") return viewTeacher();
     if (r.view === "join") return viewJoin();
+    if (r.view === "stats") return viewStats();
     return viewHome();
   }
   window.addEventListener("hashcha" + "nge", route);
-
   function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 
   // ----------------------------- cabecera / pie -----------------------------
@@ -192,14 +222,18 @@
       '<nav class="topnav">' +
       '<button data-nav="inicio">' + I.home + "<span>Inicio</span></button>" +
       '<button data-nav="unirse">' + I.student + "<span>Unirme</span></button>" +
+      '<button data-nav="progreso">' + I.chart + "<span>Progreso</span></button>" +
       '<button data-nav="docente">' + I.teacher + "<span>Docente</span></button>" +
       '<button data-theme title="Cambiar tema" aria-label="Cambiar tema">' + (isDark ? I.sun : I.moon) + "</button>" +
       "</nav></div></header>" +
-      "<main><div class=\"wrap\">" + inner + "</div></main>" +
-      '<footer class="footer"><div class="wrap"><span>QUIZ · PWA offline</span><span>Bauhaus / Estilo Internacional</span><span>Instalable · Acceso por QR</span></div></footer>'
+      '<main><div class="wrap">' + inner + "</div></main>" +
+      '<footer class="footer"><div class="wrap"><span>QUIZ · PWA offline</span><span>Bauhaus / DesignQuizz</span><span>Instalable · Acceso por QR</span></div></footer>'
     );
   }
   function paint(inner) {
+    // cierra cualquier modal o juego activo al cambiar de vista
+    document.querySelectorAll(".modal-back").forEach(function (m) { m.remove(); });
+    if (typeof Game !== "undefined" && Game.abort) Game.abort();
     APP.innerHTML = chrome(inner);
     APP.querySelectorAll("[data-nav]").forEach(function (b) {
       b.addEventListener("click", function () { var n = b.dataset.nav; go(n === "inicio" ? "#inicio" : "#" + n); });
@@ -215,7 +249,7 @@
     paint(
       '<div class="eyebrow">Cuestionarios interactivos</div>' +
       '<h1 class="display">La forma<br>sigue a la<br>función.</h1>' +
-      '<p class="lead">Plataforma para diseñar y jugar cuestionarios tipo concurso. El docente carga las preguntas; los estudiantes acceden escaneando un código QR. Funciona sin conexión y se instala como aplicación.</p>' +
+      '<p class="lead">Diseña cuestionarios tipo concurso con un editor visual, compártelos por código QR y juégalos con apuestas, rachas, niveles y logros. Funciona sin conexión y se instala como aplicación.</p>' +
       installBar() +
       '<div class="routes">' +
       '<section class="route"><span class="swatch sw-rojo"></span><span class="route-tag">Para estudiantes</span>' +
@@ -224,7 +258,7 @@
       '<div class="fill"></div><button class="btn btn-rojo btn-lg" data-go="unirse">' + I.student + " Unirme ahora</button></section>" +
       '<section class="route"><span class="swatch sw-azul"></span><span class="route-tag">Para docentes</span>' +
       "<h2>Crear y<br>compartir</h2>" +
-      '<p class="help">Carga tus preguntas desde Word, Markdown o CSV y genera al instante un QR para tu clase.</p>' +
+      '<p class="help">Escribe tus preguntas en un editor visual o impórtalas desde Word, Markdown o CSV, y genera al instante un QR.</p>' +
       '<div class="fill"></div><button class="btn btn-azul btn-lg" data-go="docente">' + I.teacher + " Entrar como docente</button></section>" +
       "</div>" +
       steps()
@@ -232,19 +266,17 @@
     APP.querySelectorAll("[data-go]").forEach(function (b) { b.addEventListener("click", function () { go("#" + b.dataset.go); }); });
     wireInstall();
   }
-
   function steps() {
     var s = [
-      ["01", "Carga", "El docente sube un archivo Word, Markdown o CSV con las preguntas y respuestas."],
-      ["02", "Genera", "La app crea un enlace y un código QR que contiene el cuestionario completo."],
-      ["03", "Juega", "Los estudiantes escanean, responden contra el reloj y ven su puntuación."],
+      ["01", "Crea", "El docente escribe las preguntas en el editor visual o las importa desde un archivo."],
+      ["02", "Comparte", "La app genera un enlace y un código QR que contiene el cuestionario completo."],
+      ["03", "Juega", "Los estudiantes escanean y juegan con apuestas, racha, XP, niveles y logros."],
     ].map(function (x) {
       return '<div class="slab"><div class="index-num" style="font-size:34px">' + x[0] + "</div><h3 style=\"margin:8px 0;font-size:20px\">" + x[1] + '</h3><p class="help">' + x[2] + "</p></div>";
     }).join("");
     return '<div class="mt-5"><div class="eyebrow">Cómo funciona</div><div class="routes" style="border-width:2px">' +
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr" class="steps">' + s + "</div></div></div>";
   }
-
   function installBar() {
     return '<div class="install-bar hidden" id="installbar"><strong>' + I.install + " Instalar aplicación</strong>" +
       '<span class="help" style="color:inherit">Añádela a tu pantalla de inicio para usarla sin conexión.</span>' +
@@ -252,7 +284,7 @@
   }
 
   // =====================================================================
-  //  VISTA: UNIRME (estudiante pega enlace/código)
+  //  VISTA: UNIRME
   // =====================================================================
   function viewJoin() {
     paint(
@@ -266,8 +298,7 @@
     APP.querySelector("#joinbtn").addEventListener("click", function () {
       var v = (APP.querySelector("#joinlink").value || "").trim();
       if (!v) { toast("Pega el enlace o el código", "rojo"); return; }
-      var payload = v;
-      var idx = v.indexOf("#j=");
+      var payload = v, idx = v.indexOf("#j=");
       if (idx >= 0) payload = v.slice(idx + 3);
       payload = payload.trim().replace(/\s+/g, "");
       go("#j=" + payload);
@@ -285,39 +316,83 @@
     }).catch(function (err) {
       paint('<div class="slab"><div class="eyebrow" style="color:var(--rojo)">Enlace no válido</div>' +
         '<h2 class="h-section">No pudimos abrir el cuestionario</h2>' +
-        '<p class="help mt-3">' + esc(err.message || "El código está incompleto o dañado. Pide a tu docente que te lo comparta de nuevo.") + "</p>" +
+        '<p class="help mt-3">' + esc(err.message || "El código está incompleto o dañado.") + "</p>" +
         '<button class="btn btn-negro mt-3" data-home>Volver al inicio</button></div>');
       APP.querySelector("[data-home]").addEventListener("click", function () { go("#inicio"); });
     });
   }
 
   function startIntro(quiz, payload) {
-    var n = quiz.questions.length;
+    var n = quiz.questions.filter(qReady).length || quiz.questions.length;
     paint(
       '<div class="eyebrow">Cuestionario</div>' +
       '<h1 class="display" style="font-size:clamp(30px,6vw,66px)">' + esc(quiz.title || "Sin título") + "</h1>" +
-      '<div class="slab mt-5" style="max-width:560px">' +
+      '<div class="slab mt-5" style="max-width:600px">' +
       '<div class="between"><span class="index-num" style="font-size:28px">' + n + '</span><span class="help">' + (n === 1 ? "pregunta" : "preguntas") + "</span></div>" +
       '<div class="field mt-3"><label class="label">Tu nombre</label>' +
       '<input class="input input-xl" id="pname" maxlength="20" placeholder="Escribe tu nombre" value="' + esc(db.name || "") + '"></div>' +
+      '<div class="field"><label class="label">Modo de juego</label>' +
+      '<div class="seg" id="modeseg" style="width:100%"><button class="on" data-mode="clasico" style="flex:1">Clásico</button>' +
+      '<button data-mode="apuesta" style="flex:1">' + I.coin + " Apuesta</button></div>" +
+      '<p class="help">En <strong>Apuesta</strong> empiezas con 1000 fichas y arriesgas antes de responder; la racha multiplica lo que ganas.</p></div>' +
       '<label class="label" style="display:flex;gap:10px;align-items:center;text-transform:none;font-weight:600"><input type="checkbox" id="pshuffle"> Barajar el orden de las preguntas</label>' +
       '<button class="btn btn-rojo btn-lg btn-block mt-3" id="startbtn">' + I.play + " Empezar</button></div>"
     );
+    var mode = "clasico";
+    APP.querySelectorAll("[data-mode]").forEach(function (b) {
+      b.addEventListener("click", function () { mode = b.dataset.mode; APP.querySelectorAll("[data-mode]").forEach(function (x) { x.classList.remove("on"); }); b.classList.add("on"); });
+    });
     APP.querySelector("#startbtn").addEventListener("click", function () {
       var name = (APP.querySelector("#pname").value || "").trim() || "Estudiante";
       db.name = name; saveDb();
-      var shuffle = APP.querySelector("#pshuffle").checked;
-      Game.start(quiz, { name: name, shuffle: shuffle, payload: payload });
+      Game.start(quiz, { name: name, shuffle: APP.querySelector("#pshuffle").checked, payload: payload, mode: mode });
     });
   }
 
   // =====================================================================
-  //  VISTA: DOCENTE
+  //  VISTA: PROGRESO (estadísticas / gamificación)
   // =====================================================================
-  function viewTeacher() {
-    if (!teacherUnlocked) return teacherGate();
-    teacherPanel();
+  function viewStats() {
+    var s = db.stats || defStats();
+    var lv = level(s.xp), inLv = s.xp - xpForLevel(lv), need = xpForLevel(lv + 1) - xpForLevel(lv);
+    var avg = s.history.length ? Math.round(s.history.reduce(function (a, h) { return a + h.score; }, 0) / s.history.length) : 0;
+    var acc = s.questions ? Math.round((s.correct / s.questions) * 100) : 0;
+    var achv = ACHV.map(function (a) {
+      var got = s.achievements.indexOf(a.id) >= 0;
+      return '<div class="achv ' + (got ? "got" : "") + '"><span class="em">' + a.em + '</span><span><span class="t">' + a.t + '</span><br><span class="d">' + a.d + "</span></span></div>";
+    }).join("");
+    var hist = s.history.slice(0, 8).map(function (h) {
+      return '<div class="between" style="border-top:2px solid var(--linea);padding:8px 0"><span style="font-weight:700">' + esc(h.title || "Cuestionario") +
+        '<span class="help" style="margin:0 0 0 8px;display:inline">' + (h.mode === "apuesta" ? "Apuesta" : "Clásico") + " · " + (h.acc || 0) + '%</span></span><span class="tnum" style="font-weight:900;color:var(--azul)">' + h.score + "</span></div>";
+    }).join("") || '<p class="help">Aún no has jugado ninguna partida.</p>';
+
+    paint(
+      '<div class="eyebrow">Tu progreso</div><h1 class="display" style="font-size:clamp(32px,6vw,60px)">Progreso</h1>' +
+      '<div class="slab mt-5"><div class="xp-wrap"><div class="level-chip">N' + lv + "</div>" +
+      '<div style="flex:1"><div class="between"><span class="xp-lab">Nivel ' + lv + " · " + s.xp + ' XP</span><span class="xp-lab">' + inLv + " / " + need + ' para nivel ' + (lv + 1) + '</span></div>' +
+      '<div class="xp-bar"><div class="xp-fill" style="width:' + (need ? Math.round((inLv / need) * 100) : 0) + '%"></div></div></div></div></div>' +
+      '<div class="dash mt-3">' +
+      '<div class="d azul"><div class="n tnum">' + s.games + '</div><div class="l">Partidas</div></div>' +
+      '<div class="d"><div class="n tnum">' + acc + '%</div><div class="l">Precisión global</div></div>' +
+      '<div class="d azul"><div class="n tnum">' + s.bestScore + '</div><div class="l">Mejor puntuación</div></div>' +
+      '<div class="d rojo"><div class="n tnum">' + s.bestStreak + '</div><div class="l">Mejor racha</div></div>' +
+      '<div class="d"><div class="n tnum">' + avg + '</div><div class="l">Media</div></div>' +
+      '<div class="d"><div class="n tnum">' + s.maxBank + '</div><div class="l">Banca máx.</div></div>' +
+      "</div>" +
+      '<div class="mt-5"><div class="eyebrow">Logros ' + s.achievements.length + " / " + ACHV.length + '</div><div class="achv-grid">' + achv + "</div></div>" +
+      '<div class="mt-5"><div class="eyebrow">Historial reciente</div><div class="slab">' + hist + "</div></div>" +
+      '<div class="mt-3"><button class="btn btn-sm btn-danger" id="resetstats">' + I.trash + " Borrar mi progreso</button></div>"
+    );
+    APP.querySelector("#resetstats").addEventListener("click", function () {
+      if (!confirm("¿Borrar todo tu progreso (XP, niveles, logros, historial)?")) return;
+      db.stats = defStats(); saveDb(); viewStats(); toast("Progreso borrado");
+    });
   }
+
+  // =====================================================================
+  //  VISTA: DOCENTE  (editor visual tipo Kahoot)
+  // =====================================================================
+  function viewTeacher() { if (!teacherUnlocked) return teacherGate(); teacherEditor(); }
 
   function teacherGate() {
     paint(
@@ -325,7 +400,7 @@
       '<h1 class="display" style="font-size:clamp(34px,6vw,64px)">Panel del<br>docente</h1>' +
       '<div class="slab mt-5" style="max-width:460px">' +
       '<div class="field"><label class="label">' + I.lock + ' Contraseña</label>' +
-      '<input class="input input-xl" type="password" id="pw" placeholder="••••••••" autocomplete="current-password"></div>' +
+      '<input class="input input-xl" type="password" id="pw" placeholder="Contraseña" autocomplete="current-password"></div>' +
       '<button class="btn btn-azul btn-lg btn-block" id="enter">Entrar</button>' +
       '<p class="help mt-3">Contraseña inicial: <strong>docente2026</strong> — cámbiala al entrar. Es una reja de aula del lado del navegador, no un sistema de seguridad.</p>' +
       "</div>"
@@ -333,7 +408,7 @@
     var pw = APP.querySelector("#pw");
     function tryEnter() {
       sha256Hex(pw.value).then(function (h) {
-        if (h === currentHash()) { teacherUnlocked = true; teacherPanel(); }
+        if (h === currentHash()) { teacherUnlocked = true; teacherEditor(); }
         else { toast("Contraseña incorrecta", "rojo"); pw.value = ""; pw.focus(); }
       });
     }
@@ -342,191 +417,283 @@
     pw.focus();
   }
 
-  var draft = null; // cuestionario en edición { title, questions }
+  var draft = null;   // cuestionario en edición
+  var editIx = 0;     // pregunta activa
 
-  function teacherPanel() {
+  function teacherEditor() {
+    if (!draft) draft = newDraft();
+    editIx = clamp(editIx, 0, draft.questions.length - 1);
+    var q = draft.questions[editIx];
+
     paint(
-      '<div class="between"><div><div class="eyebrow">Docente</div><h1 class="display" style="font-size:clamp(28px,5vw,52px)">Cargar preguntas</h1></div>' +
-      '<div class="stack gap-2"><button class="btn btn-sm" data-changepw>' + I.lock + ' Cambiar clave</button>' +
-      '<button class="btn btn-sm" data-logout>Salir</button></div></div>' +
-      '<div class="teacher-grid mt-5">' +
-      // Columna izquierda: entrada
-      "<div><div class=\"slab\">" +
-      '<div class="between"><label class="label" style="margin:0">Fuente de preguntas</label>' +
-      '<div class="seg" data-srcseg><button class="on" data-src="file">Archivo</button><button data-src="paste">Pegar texto</button></div></div>' +
-      '<div id="srcfile" class="mt-3"><div class="dropzone" id="dz"><div class="big">' + I.upload + " Word · Markdown · CSV</div>" +
-      '<p class="help">Arrastra tu archivo aquí o pulsa para elegir. Formatos: .docx, .md, .csv</p>' +
-      '<button class="btn btn-negro mt-3" id="pickbtn">Elegir archivo</button>' +
-      '<input type="file" id="file" accept=".docx,.md,.markdown,.csv,.tsv,.txt" hidden></div></div>' +
-      '<div id="srcpaste" class="mt-3 hidden"><textarea class="textarea" id="pastebox" style="min-height:200px" placeholder="Pega aquí en formato Markdown o CSV…"></textarea>' +
-      '<button class="btn btn-negro mt-3" id="parsepaste">Procesar texto</button></div>' +
-      '<hr class="divider"><div class="between"><span class="help" style="margin:0">¿No sabes el formato?</span>' +
-      '<div class="stack gap-2" style="align-items:flex-end"><button class="btn btn-sm" data-tpl="md">Plantilla Markdown</button>' +
-      '<button class="btn btn-sm" data-tpl="csv">Plantilla CSV</button></div></div>' +
+      '<div class="editor-top">' +
+      '<input class="title-in" id="etitle" placeholder="Ingresar título…" value="' + esc(draft.title) + '">' +
+      '<button class="btn btn-sm" data-import>' + I.upload + " Importar</button>" +
+      '<button class="btn btn-sm" data-lib>Biblioteca</button>' +
+      '<button class="btn btn-sm" data-save>Guardar</button>' +
+      '<button class="btn btn-sm" data-test>' + I.play + " Probar</button>" +
+      '<button class="btn btn-sm btn-azul" data-qr>' + I.qr + " Generar QR</button>" +
+      '<button class="btn btn-sm" data-changepw title="Cambiar clave">' + I.lock + "</button>" +
+      '<button class="btn btn-sm" data-logout>Salir</button>' +
       "</div>" +
-      '<div class="note mt-3">' + I.check + " Marca la respuesta correcta con <strong>[x]</strong> (Markdown), en <strong>negrita</strong> (Word) o con el número/letra en la columna <strong>correcta</strong> (CSV).</div>" +
-      "</div>" +
-      // Columna derecha: previsualización / salida
-      '<div id="out"><div class="slab"><div class="eyebrow">Previsualización</div><h3 class="h-section">Aún no hay preguntas</h3>' +
-      '<p class="help mt-3">Carga un archivo o pega el texto para ver aquí las preguntas y generar el código QR.</p>' +
-      libraryList() + "</div></div>" +
-      "</div>"
+      '<div class="ed-grid">' + railHTML() + '<div class="ed-main" id="edmain">' + mainHTML(q) + "</div></div>"
     );
 
-    APP.querySelector("[data-logout]").addEventListener("click", function () { teacherUnlocked = false; draft = null; go("#inicio"); });
+    // top actions
+    APP.querySelector("#etitle").addEventListener("input", function (e) { draft.title = e.target.value; });
+    APP.querySelector("[data-logout]").addEventListener("click", function () { teacherUnlocked = false; draft = null; editIx = 0; go("#inicio"); });
     APP.querySelector("[data-changepw]").addEventListener("click", changePassword);
-
-    // segmento fuente
-    APP.querySelectorAll("[data-src]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        APP.querySelectorAll("[data-src]").forEach(function (x) { x.classList.remove("on"); });
-        b.classList.add("on");
-        APP.querySelector("#srcfile").classList.toggle("hidden", b.dataset.src !== "file");
-        APP.querySelector("#srcpaste").classList.toggle("hidden", b.dataset.src !== "paste");
-      });
+    APP.querySelector("[data-import]").addEventListener("click", openImport);
+    APP.querySelector("[data-lib]").addEventListener("click", openLibrary);
+    APP.querySelector("[data-save]").addEventListener("click", saveDraft);
+    APP.querySelector("[data-test]").addEventListener("click", function () {
+      var ready = draft.questions.filter(qReady);
+      if (!ready.length) { toast("Completa al menos una pregunta para probar", "rojo"); return; }
+      Game.start({ title: draft.title, questions: ready }, { name: db.name || "Docente", shuffle: false, preview: true, mode: "clasico" });
     });
-    // archivo
-    var file = APP.querySelector("#file"), dz = APP.querySelector("#dz");
-    APP.querySelector("#pickbtn").addEventListener("click", function () { file.click(); });
-    file.addEventListener("change", function () { if (file.files[0]) handleFile(file.files[0]); });
-    ["dragover", "dragenter"].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add("drag"); }); });
-    ["dragleave", "drop"].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove("drag"); }); });
-    dz.addEventListener("drop", function (e) { var f = e.dataTransfer.files[0]; if (f) handleFile(f); });
-    // pegar
-    APP.querySelector("#parsepaste").addEventListener("click", function () {
-      var txt = APP.querySelector("#pastebox").value;
-      if (!txt.trim()) { toast("Pega algún texto", "rojo"); return; }
-      var isCsv = /[,;\t].*[,;\t]/.test(txt.split(/\r?\n/)[0] || "");
-      var res = isCsv ? P.parseCSV(txt) : P.parsePlain(txt);
-      acceptDraft(res, "texto pegado");
-    });
-    // plantillas
-    APP.querySelectorAll("[data-tpl]").forEach(function (b) { b.addEventListener("click", function () { loadTemplate(b.dataset.tpl); }); });
+    APP.querySelector("[data-qr]").addEventListener("click", openQrModal);
+    bindRail();
+    bindMain();
   }
 
-  function handleFile(f) {
-    var name = f.name || "archivo";
-    var ext = (name.split(".").pop() || "").toLowerCase();
+  function railHTML() {
+    var typeShort = { quiz: "Única", multi: "Múltiple", truefalse: "V/F" };
+    var thumbs = draft.questions.map(function (q, i) {
+      var ready = qReady(q);
+      return '<button class="q-thumb ' + (i === editIx ? "on" : "") + '" data-q="' + i + '"><span class="n">' + (i + 1) + '</span>' +
+        '<span class="tt"><span class="qx">' + (esc(q.text) || '<span class="warn">Sin texto</span>') + '</span>' +
+        '<span class="meta">' + typeShort[q.type] + " · " + q.time + "s" + (ready ? "" : ' · <span class="warn">incompleta</span>') + "</span></span></button>";
+    }).join("");
+    return '<div class="q-rail"><div class="rail-head">Preguntas · ' + draft.questions.length + "</div>" + thumbs +
+      '<div class="row" style="gap:8px"><button class="btn btn-sm btn-azul" data-addq style="flex:1">' + I.plus + " Añadir</button></div></div>";
+  }
+
+  function mainHTML(q) {
+    var isTF = q.type === "truefalse", isMulti = q.type === "multi";
+    var media;
+    if (q.image) media = '<div class="media"><button class="btn btn-sm rmmedia" data-rmmedia>' + I.x + '</button><img src="' + esc(q.image) + '" alt=""></div>';
+    else if (q.emoji) media = '<div class="media"><button class="btn btn-sm rmmedia" data-rmmedia>' + I.x + '</button><div class="emoji-big">' + esc(q.emoji) + "</div></div>";
+    else media = '<div class="media"><div><div class="hint">' + I.image + " Multimedia (opcional)</div>" +
+      '<div class="row"><input class="emoji-in" id="emojiin" maxlength="4" placeholder="🙂"><button class="btn btn-sm" data-pickimg>' + I.image + " Imagen</button>" +
+      '<input type="file" id="imgfile" accept="image/*" hidden></div></div></div>';
+
+    var tiles = q.choices.map(function (c, i) {
+      var on = q.correct.indexOf(i) >= 0;
+      return '<div class="ans-edit p' + i + '"><span class="glyph">' + GLYPH[i] + "</span>" +
+        '<input class="atext" data-atext="' + i + '" value="' + esc(c) + '" placeholder="Añadir respuesta ' + (i + 1) + (i > 1 ? " (opcional)" : "") + '"' + (isTF ? " readonly" : "") + ">" +
+        '<button class="cor ' + (on ? "on" : "") + '" data-cor="' + i + '" title="Marcar correcta" aria-label="Marcar correcta">' + I.check + "</button>" +
+        (!isTF && q.choices.length > 2 ? '<button class="del" data-del="' + i + '" title="Quitar">' + I.trash + "</button>" : "") + "</div>";
+    }).join("");
+
+    return '<textarea class="q-input" id="qtext" maxlength="240" placeholder="Escribe tu pregunta">' + esc(q.text) + "</textarea>" +
+      media +
+      '<div class="ans-grid">' + tiles + "</div>" +
+      (!isTF && q.choices.length < 6 ? '<button class="btn btn-sm mt-3" data-addans>' + I.plus + " Añadir más respuestas</button>" : "") +
+      '<div class="ed-settings">' +
+      '<div class="f"><span class="label">Tipo</span><div class="seg" id="typeseg">' +
+      '<button class="' + (q.type === "quiz" ? "on" : "") + '" data-type="quiz">Única</button>' +
+      '<button class="' + (isMulti ? "on" : "") + '" data-type="multi">Varias</button>' +
+      '<button class="' + (isTF ? "on" : "") + '" data-type="truefalse">V/F</button></div></div>' +
+      '<div class="f"><span class="label">Tiempo</span><select class="select" id="qtime" style="width:auto">' +
+      [5, 10, 20, 30, 45, 60, 90, 120].map(function (t) { return '<option value="' + t + '"' + (q.time === t ? " selected" : "") + ">" + t + " s</option>"; }).join("") + "</select></div>" +
+      '<div class="f"><span class="label">Puntos</span><select class="select" id="qpts" style="width:auto">' +
+      '<option value="std"' + (q.points === "std" ? " selected" : "") + ">Estándar</option>" +
+      '<option value="double"' + (q.points === "double" ? " selected" : "") + ">Dobles</option>" +
+      '<option value="none"' + (q.points === "none" ? " selected" : "") + ">Sin puntos</option></select></div>" +
+      '<div class="f" style="margin-left:auto"><span class="label">' + (isMulti ? "Marca todas las correctas" : "Marca la correcta") + "</span></div>" +
+      "</div>";
+  }
+
+  function remain(fn) { // re-render solo el panel principal
+    var q = draft.questions[editIx];
+    APP.querySelector("#edmain").innerHTML = mainHTML(q);
+    APP.querySelector(".ed-grid").replaceChild(el(railHTML()), APP.querySelector(".q-rail"));
+    bindRail(); bindMain();
+    if (fn) fn();
+  }
+
+  function bindRail() {
+    APP.querySelectorAll("[data-q]").forEach(function (b) { b.addEventListener("click", function () { editIx = +b.dataset.q; remain(); }); });
+    var add = APP.querySelector("[data-addq]");
+    if (add) add.addEventListener("click", function () { draft.questions.push(newQuestion()); editIx = draft.questions.length - 1; remain(); });
+  }
+
+  function bindMain() {
+    var q = draft.questions[editIx];
+    var qt = APP.querySelector("#qtext");
+    qt.addEventListener("input", function () {
+      q.text = qt.value;
+      var thumb = APP.querySelector('.q-thumb[data-q="' + editIx + '"] .qx');
+      if (thumb) thumb.textContent = q.text || "Sin texto";
+    });
+    APP.querySelectorAll("[data-atext]").forEach(function (inp) {
+      inp.addEventListener("input", function () { q.choices[+inp.dataset.atext] = inp.value; });
+    });
+    APP.querySelectorAll("[data-cor]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var i = +b.dataset.cor;
+        if (q.type === "multi") { var at = q.correct.indexOf(i); if (at >= 0) q.correct.splice(at, 1); else q.correct.push(i); }
+        else q.correct = [i];
+        remain();
+      });
+    });
+    APP.querySelectorAll("[data-del]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var i = +b.dataset.del; if (q.choices.length <= 2) return;
+        q.choices.splice(i, 1);
+        q.correct = q.correct.filter(function (c) { return c !== i; }).map(function (c) { return c > i ? c - 1 : c; });
+        remain();
+      });
+    });
+    var addans = APP.querySelector("[data-addans]");
+    if (addans) addans.addEventListener("click", function () { if (q.choices.length < 6) { q.choices.push(""); remain(); } });
+    APP.querySelectorAll("[data-type]").forEach(function (b) { b.addEventListener("click", function () { changeType(b.dataset.type); }); });
+    APP.querySelector("#qtime").addEventListener("change", function (e) { q.time = +e.target.value; remain(); });
+    APP.querySelector("#qpts").addEventListener("change", function (e) { q.points = e.target.value; });
+    // media
+    var emojiin = APP.querySelector("#emojiin");
+    if (emojiin) emojiin.addEventListener("change", function () { q.emoji = emojiin.value.trim(); if (q.emoji) remain(); });
+    var pickimg = APP.querySelector("[data-pickimg]"), imgfile = APP.querySelector("#imgfile");
+    if (pickimg) pickimg.addEventListener("click", function () { imgfile.click(); });
+    if (imgfile) imgfile.addEventListener("change", function () { if (imgfile.files[0]) loadImage(imgfile.files[0], q); });
+    var rm = APP.querySelector("[data-rmmedia]");
+    if (rm) rm.addEventListener("click", function () { q.image = ""; q.emoji = ""; remain(); });
+  }
+
+  function changeType(type) {
+    var q = draft.questions[editIx];
+    if (q.type === type) return;
+    if (type === "truefalse") { q.choices = ["Verdadero", "Falso"]; q.correct = q.correct.filter(function (c) { return c < 2; }); if (!q.correct.length) q.correct = [0]; }
+    else { if (q.type === "truefalse") { q.choices = ["", "", "", ""]; q.correct = []; } if (type === "quiz" && q.correct.length > 1) q.correct = [q.correct[0]]; }
+    q.type = type; remain();
+  }
+
+  function loadImage(file, q) {
+    if (file.size > 500000) { toast("Imagen muy pesada (máx 500 KB para que quepa en el QR)", "rojo"); }
+    var rd = new FileReader();
+    rd.onload = function () { q.image = rd.result; q.emoji = ""; remain(); };
+    rd.readAsDataURL(file);
+  }
+
+  function saveDraft() {
+    var ready = draft.questions.filter(qReady);
+    if (!ready.length) { toast("Completa al menos una pregunta para guardar", "rojo"); return; }
+    db.library = db.library || [];
+    db.library.unshift({ id: "L" + Date.now(), title: draft.title || "Cuestionario", questions: JSON.parse(JSON.stringify(draft.questions)), date: Date.now() });
+    db.library = db.library.slice(0, 30); saveDb();
+    toast("Guardado en tu biblioteca");
+  }
+
+  // ---- Importar (Word / Markdown / CSV / pegar) ----
+  function openImport() {
+    var m = openModal(
+      "<h3>Importar preguntas</h3><p class=\"help\">Se añaden a las preguntas actuales. Formatos: Word (.docx), Markdown (.md) o CSV.</p>" +
+      '<div class="dropzone mt-3" id="idz"><div class="big">' + I.upload + " Arrastra o elige un archivo</div>" +
+      '<button class="btn btn-negro mt-3" id="ipick">Elegir archivo</button><input type="file" id="ifile" accept=".docx,.md,.markdown,.csv,.tsv,.txt" hidden></div>' +
+      '<div class="field mt-3"><label class="label">…o pega el texto (Markdown / CSV)</label><textarea class="textarea" id="ipaste" style="min-height:120px" placeholder="## ¿Pregunta?\n- [x] correcta\n- [ ] otra"></textarea></div>' +
+      '<div class="between"><div class="stack gap-2"><button class="btn btn-sm" data-tpl="md">Plantilla MD</button><button class="btn btn-sm" data-tpl="csv">Plantilla CSV</button></div>' +
+      '<div class="modal-actions" style="margin:0"><button class="btn" data-cancel>Cerrar</button><button class="btn btn-azul" id="iproc">Procesar</button></div></div>'
+    );
+    var ifile = m.querySelector("#ifile"), idz = m.querySelector("#idz");
+    m.querySelector("#ipick").addEventListener("click", function () { ifile.click(); });
+    ifile.addEventListener("change", function () { if (ifile.files[0]) importFile(ifile.files[0], m); });
+    ["dragover", "dragenter"].forEach(function (ev) { idz.addEventListener(ev, function (e) { e.preventDefault(); idz.classList.add("drag"); }); });
+    ["dragleave", "drop"].forEach(function (ev) { idz.addEventListener(ev, function (e) { e.preventDefault(); idz.classList.remove("drag"); }); });
+    idz.addEventListener("drop", function (e) { var f = e.dataTransfer.files[0]; if (f) importFile(f, m); });
+    m.querySelector("#iproc").addEventListener("click", function () {
+      var txt = m.querySelector("#ipaste").value;
+      if (!txt.trim()) { toast("Pega texto o elige un archivo", "rojo"); return; }
+      var isCsv = /[,;\t].*[,;\t]/.test(txt.split(/\r?\n/)[0] || "");
+      appendImported((isCsv ? P.parseCSV(txt) : P.parsePlain(txt)), m);
+    });
+    m.querySelectorAll("[data-tpl]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var md = "# Mi cuestionario\n\n## ¿Cuál es la capital de Perú?\n- [x] Lima\n- [ ] Cusco\n- [ ] Arequipa\n\n## Selecciona los números pares\n- [x] 2\n- [ ] 3\n- [x] 4";
+        var csv = "pregunta,opcion1,opcion2,opcion3,correcta,tiempo\n\"¿Capital de Perú?\",Lima,Cusco,Quito,1,20\n\"¿2 + 2?\",3,4,5,2,15";
+        m.querySelector("#ipaste").value = b.dataset.tpl === "md" ? md : csv;
+      });
+    });
+    m.querySelector("[data-cancel]").addEventListener("click", function () { m.remove(); });
+  }
+  function importFile(f, m) {
+    var name = f.name || "archivo", ext = (name.split(".").pop() || "").toLowerCase();
     if (ext === "docx") {
-      f.arrayBuffer().then(function (ab) { return P.parseDocx(ab); })
-        .then(function (res) { acceptDraft(res, name); })
+      f.arrayBuffer().then(function (ab) { return P.parseDocx(ab); }).then(function (r) { appendImported(r, m); })
         .catch(function (e) { toast("No se pudo leer el Word: " + (e.message || e), "rojo"); });
     } else {
       var rd = new FileReader();
-      rd.onload = function () {
-        P.parseFile(name, rd.result, null).then(function (res) { acceptDraft(res, name); })
-          .catch(function (e) { toast("Error al procesar: " + (e.message || e), "rojo"); });
-      };
+      rd.onload = function () { P.parseFile(name, rd.result, null).then(function (r) { appendImported(r, m); }).catch(function (e) { toast("Error: " + (e.message || e), "rojo"); }); };
       rd.readAsText(f);
     }
   }
-
-  function loadTemplate(kind) {
-    var md = "# Mi cuestionario\n\n## ¿Cuál es la capital de Perú?\n- [x] Lima\n- [ ] Cusco\n- [ ] Arequipa\n- [ ] Trujillo\n(tiempo: 20)\n\n## Selecciona los números pares\n- [x] 2\n- [ ] 3\n- [x] 4\n- [ ] 5\n\n## El agua hierve a 100°C a nivel del mar\n- [x] Verdadero\n- [ ] Falso";
-    var csv = "pregunta,opcion1,opcion2,opcion3,opcion4,correcta,tiempo\n\"¿Cuál es la capital de Perú?\",Lima,Cusco,Arequipa,Trujillo,1,20\n\"¿2 + 2?\",3,4,5,,2,15\n\"El Sol es una estrella\",Verdadero,Falso,,,V,10";
-    APP.querySelectorAll("[data-src]").forEach(function (x) { x.classList.toggle("on", x.dataset.src === "paste"); });
-    APP.querySelector("#srcfile").classList.add("hidden");
-    APP.querySelector("#srcpaste").classList.remove("hidden");
-    APP.querySelector("#pastebox").value = kind === "md" ? md : csv;
-    toast("Plantilla cargada — pulsa «Procesar texto»");
+  function appendImported(res, m) {
+    var qs = (res.questions || []).filter(P.isValid).map(function (q) { return { text: q.text, choices: q.choices, correct: q.correct, time: q.time || 20, points: q.points || "std", type: q.type || "quiz", emoji: q.emoji || "", image: "" }; });
+    if (!qs.length) { toast("No se detectaron preguntas válidas", "rojo"); return; }
+    // si el borrador está vacío (1 pregunta en blanco), reemplaza; si no, añade
+    var onlyEmpty = draft.questions.length === 1 && !qReady(draft.questions[0]);
+    if (onlyEmpty) draft.questions = qs; else draft.questions = draft.questions.concat(qs);
+    if (!draft.title && res.title) draft.title = res.title;
+    editIx = draft.questions.length - 1;
+    if (m) m.remove();
+    teacherEditor();
+    toast(qs.length + (qs.length === 1 ? " pregunta importada" : " preguntas importadas"));
   }
 
-  function acceptDraft(res, sourceName) {
-    var qs = (res.questions || []).filter(P.isValid);
-    if (!qs.length) {
-      toast("No se detectaron preguntas válidas. Revisa el formato.", "rojo");
-      return;
-    }
-    draft = { title: res.title || guessTitle(sourceName), questions: qs };
-    renderDraft();
-    toast(qs.length + (qs.length === 1 ? " pregunta cargada" : " preguntas cargadas"));
-  }
-  function guessTitle(name) { return (name || "Cuestionario").replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "Cuestionario"; }
-
-  function renderDraft() {
-    var out = APP.querySelector("#out");
-    var typeLabel = { quiz: "Opción única", multi: "Varias correctas", truefalse: "V/F" };
-    var previews = draft.questions.map(function (q, i) {
-      var opts = q.choices.map(function (c, ci) {
-        var ok = q.correct.indexOf(ci) >= 0;
-        return '<div class="opt ' + (ok ? "ok" : "") + '"><span class="mk">' + (ok ? I.check : "") + "</span><span>" + esc(c) + "</span></div>";
-      }).join("");
-      return '<div class="q-preview"><div class="q-head"><span class="n">' + (i + 1) + '</span><span class="qx">' + esc(q.text) +
-        '</span><span class="q-meta">' + typeLabel[q.type] + " · " + q.time + "s</span></div>" + opts + "</div>";
-    }).join("");
-
-    out.innerHTML =
-      '<div class="slab"><div class="between"><div><div class="eyebrow">Previsualización</div>' +
-      '<div class="index-num" style="font-size:40px">' + draft.questions.length + '<span class="help" style="font-size:14px"> preguntas</span></div></div></div>' +
-      '<div class="field mt-3"><label class="label">Título</label><input class="input" id="dtitle" value="' + esc(draft.title) + '"></div>' +
-      '<div class="stack gap-2"><button class="btn btn-azul btn-block" id="genqr">' + I.qr + " Generar acceso (QR)</button>" +
-      '<div class="row"><button class="btn" id="testplay">' + I.play + " Probar</button>" +
-      '<button class="btn" id="savelib">Guardar</button></div></div>' +
-      '<hr class="divider"><div id="qrout"></div>' +
-      "<div style=\"max-height:420px;overflow:auto\" class=\"mt-3\">" + previews + "</div>" +
-      "</div>";
-
-    APP.querySelector("#dtitle").addEventListener("input", function (e) { draft.title = e.target.value; });
-    APP.querySelector("#genqr").addEventListener("click", generateAccess);
-    APP.querySelector("#testplay").addEventListener("click", function () {
-      Game.start({ title: draft.title, questions: draft.questions }, { name: db.name || "Docente", shuffle: false, preview: true });
+  // ---- Biblioteca ----
+  function openLibrary() {
+    var list = (db.library || []).map(function (q) {
+      return '<div class="between" style="border-top:2px solid var(--linea);padding:10px 0"><span style="font-weight:700">' + esc(q.title) +
+        '<span class="help" style="display:inline;margin:0 0 0 8px">' + q.questions.length + " preg.</span></span>" +
+        '<span class="stack gap-2" style="flex-direction:row"><button class="btn btn-sm" data-libopen="' + q.id + '">Abrir</button>' +
+        '<button class="btn btn-sm btn-danger" data-libdel="' + q.id + '">' + I.trash + "</button></span></div>";
+    }).join("") || '<p class="help">Aún no has guardado cuestionarios.</p>';
+    var m = openModal("<h3>Tu biblioteca</h3><p class=\"help\">Guardada en este dispositivo.</p><div class=\"mt-3\">" + list + '</div><div class="modal-actions"><button class="btn" data-cancel>Cerrar</button></div>');
+    m.querySelector("[data-cancel]").addEventListener("click", function () { m.remove(); });
+    m.querySelectorAll("[data-libopen]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var q = db.library.find(function (x) { return x.id === b.dataset.libopen; });
+        if (q) { draft = { title: q.title, questions: JSON.parse(JSON.stringify(q.questions)) }; editIx = 0; m.remove(); teacherEditor(); }
+      });
     });
-    APP.querySelector("#savelib").addEventListener("click", function () {
-      db.library = db.library || [];
-      db.library.unshift({ id: "L" + Date.now(), title: draft.title, questions: draft.questions, date: Date.now() });
-      db.library = db.library.slice(0, 30);
-      saveDb();
-      toast("Guardado en tu biblioteca");
+    m.querySelectorAll("[data-libdel]").forEach(function (b) {
+      b.addEventListener("click", function () { db.library = db.library.filter(function (x) { return x.id !== b.dataset.libdel; }); saveDb(); m.remove(); openLibrary(); });
     });
   }
 
-  function generateAccess() {
-    var qrout = APP.querySelector("#qrout");
-    qrout.innerHTML = '<p class="help">Generando…</p>';
-    encodeQuiz({ title: draft.title, questions: draft.questions }).then(function (payload) {
-      var url = shareURL(payload);
-      var qr = makeQR(url);
+  // ---- Generar QR (modal) ----
+  function openQrModal() {
+    var ready = draft.questions.filter(qReady);
+    if (!ready.length) { toast("Completa al menos una pregunta", "rojo"); return; }
+    var m = openModal('<h3>Acceso al cuestionario</h3><p class="help">' + ready.length + " pregunta(s) lista(s). Genera el código para tu clase.</p>" +
+      '<div id="qrbody" class="mt-3"><p class="help">Generando…</p></div>' +
+      '<div class="modal-actions"><button class="btn" data-cancel>Cerrar</button></div>');
+    m.querySelector("[data-cancel]").addEventListener("click", function () { m.remove(); });
+    var quiz = { title: draft.title || "Cuestionario", questions: ready };
+    encodeQuiz(quiz).then(function (payload) {
+      var url = shareURL(payload), body = m.querySelector("#qrbody"), qr = makeQR(url);
       if (!qr) {
-        qrout.innerHTML = '<div class="note rojo">' + I.x + " El cuestionario es demasiado grande para un solo código QR (" + url.length +
-          " caracteres). El <strong>enlace</strong> sigue funcionando — compártelo por chat, o divide el cuestionario en dos.</div>" +
-          linkLine(url);
-        wireLinkLine(url);
-        return;
+        body.innerHTML = '<div class="note rojo">' + I.x + " Demasiado grande para un QR (" + url.length + " caracteres" + (quiz.questions.some(function (q) { return q.image; }) ? ", quizá por las imágenes" : "") +
+          "). El <strong>enlace</strong> funciona igual.</div>" + linkLine(url);
+        wireLinkLine(url, m); return;
       }
       var svg = qrSVG(qr, 320);
-      qrout.innerHTML =
-        '<div class="qr-box"><div id="qrsvg">' + svg + "</div>" +
-        '<div class="help" style="color:#111">Escanea para jugar · ' + draft.questions.length + " preguntas</div></div>" +
-        '<div class="row mt-3"><button class="btn btn-sm" id="dlsvg">' + I.download + " QR (SVG)</button>" +
-        '<button class="btn btn-sm" id="dlpng">' + I.download + " QR (PNG)</button>" +
-        '<button class="btn btn-sm" id="openplay">' + I.play + " Abrir</button></div>" +
-        linkLine(url);
-      wireLinkLine(url);
-      APP.querySelector("#dlsvg").addEventListener("click", function () { downloadText((draft.title || "quiz") + "-qr.svg", svg, "image/svg+xml"); });
-      APP.querySelector("#dlpng").addEventListener("click", function () { svgToPng(svg, 800, (draft.title || "quiz") + "-qr.png"); });
-      APP.querySelector("#openplay").addEventListener("click", function () { window.open(url, "_blank"); });
-    }).catch(function (e) { qrout.innerHTML = '<div class="note rojo">Error: ' + esc(e.message || e) + "</div>"; });
+      body.innerHTML = '<div class="qr-box"><div id="qrsvg">' + svg + '</div><div class="help" style="color:#111">Escanea para jugar · ' + quiz.questions.length + " preguntas</div></div>" +
+        '<div class="row mt-3"><button class="btn btn-sm" id="dlsvg">' + I.download + ' SVG</button><button class="btn btn-sm" id="dlpng">' + I.download + ' PNG</button>' +
+        '<button class="btn btn-sm" id="openplay">' + I.play + ' Abrir</button></div>' + linkLine(url);
+      wireLinkLine(url, m);
+      m.querySelector("#dlsvg").addEventListener("click", function () { downloadText((quiz.title || "quiz") + "-qr.svg", svg, "image/svg+xml"); });
+      m.querySelector("#dlpng").addEventListener("click", function () { svgToPng(svg, 800, (quiz.title || "quiz") + "-qr.png"); });
+      m.querySelector("#openplay").addEventListener("click", function () { window.open(url, "_blank"); });
+    }).catch(function (e) { m.querySelector("#qrbody").innerHTML = '<div class="note rojo">Error: ' + esc(e.message || e) + "</div>"; });
   }
-
-  function linkLine(url) {
-    return '<div class="link-line mt-3"><input id="sharelink" readonly value="' + esc(url) + '"><button id="copylink">' + I.copy + " Copiar</button></div>";
-  }
-  function wireLinkLine(url) {
-    var b = APP.querySelector("#copylink"); if (!b) return;
+  function linkLine(url) { return '<div class="link-line mt-3"><input id="sharelink" readonly value="' + esc(url) + '"><button id="copylink">' + I.copy + " Copiar</button></div>"; }
+  function wireLinkLine(url, root) {
+    var b = (root || APP).querySelector("#copylink"); if (!b) return;
     b.addEventListener("click", function () {
-      var inp = APP.querySelector("#sharelink"); inp.select();
+      (root || APP).querySelector("#sharelink").select();
       (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { toast("Enlace copiado"); })
         .catch(function () { try { document.execCommand("copy"); toast("Enlace copiado"); } catch (e) { toast("Copia manual", "rojo"); } });
     });
-  }
-
-  function libraryList() {
-    if (!db.library || !db.library.length) return "";
-    var items = db.library.map(function (q) {
-      return '<div class="between" style="border-top:2px solid var(--linea);padding:10px 0"><span style="font-weight:700">' + esc(q.title) +
-        '</span><span class="help" style="margin:0">' + q.questions.length + " preg. <button class=\"btn btn-sm\" data-lib=\"" + q.id + '">Abrir</button> <button class="btn btn-sm" data-libdel="' + q.id + '">' + I.trash + "</button></span></div>";
-    }).join("");
-    return '<hr class="divider"><div class="eyebrow">Tu biblioteca (este dispositivo)</div>' + items;
   }
 
   function changePassword() {
@@ -545,35 +712,24 @@
     });
   }
 
-  // Delegación para biblioteca (abrir / borrar)
-  document.addEventListener("click", function (e) {
-    var t = e.target.closest && e.target.closest("[data-lib],[data-libdel]");
-    if (!t) return;
-    if (t.dataset.lib) {
-      var q = (db.library || []).find(function (x) { return x.id === t.dataset.lib; });
-      if (q) { draft = { title: q.title, questions: q.questions }; renderDraft(); window.scrollTo(0, 0); }
-    } else if (t.dataset.libdel) {
-      db.library = (db.library || []).filter(function (x) { return x.id !== t.dataset.libdel; });
-      saveDb(); if (draft) renderDraft(); else teacherPanel();
-    }
-  });
-
   // =====================================================================
-  //  MOTOR DE JUEGO
+  //  MOTOR DE JUEGO (con apuestas, racha, XP, logros)
   // =====================================================================
   var Game = (function () {
     var g = null, root = null, timer = null;
 
     function start(quiz, opts) {
-      var qs = quiz.questions.filter(P.isValid).map(function (q) { return JSON.parse(JSON.stringify(q)); });
+      var qs = quiz.questions.filter(qReady).map(function (q) { return JSON.parse(JSON.stringify(q)); });
+      if (!qs.length) { toast("El cuestionario no tiene preguntas completas", "rojo"); return; }
       if (opts.shuffle) qs = shuffle(qs);
-      g = { quiz: quiz, opts: opts, qs: qs, i: 0, score: 0, streak: 0, best: 0, correct: 0, answers: [], phase: "q", picked: [], answered: false, total: 0, t0: 0 };
-      root = el('<div class="game"></div>');
-      document.body.appendChild(root);
+      g = { quiz: quiz, opts: opts, qs: qs, i: 0, score: 0, streak: 0, best: 0, correct: 0, answers: [], phase: "q", picked: [], answered: false, total: 0, t0: 0, xpGain: 0 };
+      if (opts.mode === "apuesta") { g.bank = 1000; g.wager = 200; g.maxBank = 1000; }
+      root = el('<div class="game"></div>'); document.body.appendChild(root);
       document.addEventListener("keydown", keys);
       renderQ();
     }
     function shuffle(a) { a = a.slice(); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+    function mult() { return 1 + Math.min(Math.max(g.streak - 1, 0), 5) * 0.2; }
 
     function keys(e) {
       if (!g) return;
@@ -584,41 +740,56 @@
 
     function topbar() {
       var pct = (g.i / g.qs.length) * 100;
+      var right = g.opts.mode === "apuesta"
+        ? '<div class="cell bankcell">' + I.coin + " " + g.bank + "</div>"
+        : '<div class="cell tnum" id="scorecell">' + g.score + "</div>";
       return '<div class="game-top"><button class="game-quit cell" data-quit>' + I.back + " Salir</button>" +
         '<div class="cell prog"><div class="prog-track"><div class="prog-fill" style="width:' + pct + '%"></div></div></div>' +
-        '<div class="cell tnum">' + (g.i + 1) + " / " + g.qs.length + "</div>" +
-        '<div class="cell tnum" id="scorecell">' + g.score + "</div></div>";
+        '<div class="cell tnum">' + (g.i + 1) + " / " + g.qs.length + "</div>" + right + "</div>";
     }
 
     function renderQ() {
       var q = g.qs[g.i]; g.phase = "q"; g.answered = false; g.picked = [];
       var multi = q.type === "multi";
       var kind = q.type === "truefalse" ? "Verdadero o Falso" : multi ? "Elige todas las correctas" : "Elige una respuesta";
+      var media = q.image ? '<img src="' + esc(q.image) + '" alt="" style="max-height:150px;max-width:100%;border:var(--borde) solid var(--linea)">' : (q.emoji ? '<div class="q-emoji">' + esc(q.emoji) + "</div>" : "");
       var answers = q.choices.map(function (c, i) {
         return '<button class="answer p' + i + '" data-a="' + i + '"><span class="glyph">' + GLYPH[i] + "</span>" +
           '<span class="lab">' + esc(c) + '</span><span class="key">' + KEYS[i] + "</span></button>";
       }).join("");
+      var bet = g.opts.mode === "apuesta" ? betBar() : "";
       root.innerHTML = topbar() +
         '<div class="game-stage"><div class="q-zone">' +
         '<div class="timer" id="timer"><div class="fillbar" id="fillbar" style="height:100%"></div><div class="num" id="tnum">' + q.time + '</div><div class="lab">seg</div></div>' +
-        '<div class="q-statement"><div class="q-kind">' + kind + "</div>" + (q.emoji ? '<div class="q-emoji">' + esc(q.emoji) + "</div>" : "") +
-        '<div class="q-text">' + esc(q.text) + "</div></div></div>" +
+        '<div class="q-statement"><div class="q-kind">' + kind + (g.streak >= 2 ? '  ·  <span class="mult-badge hot">' + I.flame + " x" + mult().toFixed(1) + "</span>" : "") + "</div>" + media +
+        '<div class="q-text">' + esc(q.text) + "</div></div></div>" + bet +
         '<div class="answers" id="answers">' + answers + "</div>" +
         (multi ? '<button class="btn btn-azul btn-lg" id="confirm">' + I.check + " Confirmar</button>" : "") +
         "</div>";
       root.querySelector("[data-quit]").addEventListener("click", quit);
-      root.querySelectorAll("[data-a]").forEach(function (b) {
-        b.addEventListener("click", function () { multi ? toggle(+b.dataset.a, b) : pick(+b.dataset.a); });
-      });
+      root.querySelectorAll("[data-a]").forEach(function (b) { b.addEventListener("click", function () { multi ? toggle(+b.dataset.a, b) : pick(+b.dataset.a); }); });
       if (multi) root.querySelector("#confirm").addEventListener("click", confirmMulti);
+      if (g.opts.mode === "apuesta") bindBet();
       startTimer(q.time);
     }
 
-    function toggle(i, btn) {
-      var at = g.picked.indexOf(i);
-      if (at >= 0) { g.picked.splice(at, 1); btn.classList.remove("sel"); }
-      else { g.picked.push(i); btn.classList.add("sel"); }
+    function betBar() {
+      return '<div class="bet-bar"><span class="bank">' + I.coin + " <span id=\"bankn\">" + g.bank + "</span></span>" +
+        '<div class="wager-ctl"><span class="xp-lab">Apuesta</span><input type="range" id="wager" min="0" max="' + g.bank + '" step="50" value="' + Math.min(g.wager, g.bank) + '">' +
+        '<span class="wnum" id="wnum">' + Math.min(g.wager, g.bank) + "</span></div>" +
+        '<button class="qbtn" data-w="0">Nada</button><button class="qbtn" data-w="half">½</button><button class="qbtn" data-w="all">Todo</button></div>';
     }
+    function bindBet() {
+      var r = root.querySelector("#wager"), wn = root.querySelector("#wnum");
+      function setW(v) { g.wager = clamp(Math.round(v), 0, g.bank); r.value = g.wager; wn.textContent = g.wager; }
+      r.addEventListener("input", function () { setW(+r.value); });
+      root.querySelectorAll("[data-w]").forEach(function (b) {
+        b.addEventListener("click", function () { var d = b.dataset.w; setW(d === "all" ? g.bank : d === "half" ? g.bank / 2 : 0); });
+      });
+      setW(Math.min(g.wager, g.bank));
+    }
+
+    function toggle(i, btn) { var at = g.picked.indexOf(i); if (at >= 0) { g.picked.splice(at, 1); btn.classList.remove("sel"); } else { g.picked.push(i); btn.classList.add("sel"); } }
     function startTimer(secs) {
       clearInterval(timer); g.total = secs; g.t0 = performance.now();
       var fill = root.querySelector("#fillbar"), num = root.querySelector("#tnum"), tm = root.querySelector("#timer");
@@ -638,21 +809,32 @@
       var q = g.qs[g.i];
       var cs = q.correct.slice().sort(), ps = picked.slice().sort();
       var ok = ps.length === cs.length && ps.every(function (v, k) { return v === cs[k]; });
-      var gained = 0;
+      var speed = clamp(1 - elapsed / (g.total * 2), 0.5, 1);
+      var gained = 0, delta = 0;
       if (ok) {
         g.correct++; g.streak++; g.best = Math.max(g.best, g.streak);
-        if (q.points !== "none") {
+        g.xpGain += 10 + Math.min(g.streak, 5) * 2;
+        if (g.opts.mode === "apuesta") {
+          var w = clamp(g.wager, 0, g.bank);
+          delta = Math.round(w * mult() * (0.6 + 0.4 * speed));
+          g.bank += delta; g.maxBank = Math.max(g.maxBank, g.bank); g.score = g.bank;
+        } else if (q.points !== "none") {
           var base = q.points === "double" ? 2000 : 1000;
-          var speed = clamp(1 - elapsed / (g.total * 2), 0.5, 1);
-          gained = Math.round(base * speed);
-          if (g.streak >= 2) gained += Math.min(g.streak - 1, 5) * 100;
+          gained = Math.round(base * speed); if (g.streak >= 2) gained += Math.min(g.streak - 1, 5) * 100;
+          g.score += gained;
         }
-      } else { g.streak = 0; }
-      g.score += gained; g.answers.push({ text: q.text, ok: ok, gained: gained });
-      feedback(ok, gained, q, picked);
+      } else {
+        g.streak = 0;
+        if (g.opts.mode === "apuesta") {
+          var lw = clamp(g.wager, 0, g.bank); g.bank = Math.max(0, g.bank - lw); delta = -lw;
+          if (g.bank === 0) { g.bank = 100; g.rescued = true; } g.score = g.bank;
+        }
+      }
+      g.answers.push({ text: q.text, ok: ok, gained: g.opts.mode === "apuesta" ? delta : gained });
+      feedback(ok, g.opts.mode === "apuesta" ? delta : gained, q, picked);
     }
 
-    function feedback(ok, gained, q, picked) {
+    function feedback(ok, val, q, picked) {
       g.phase = "fb";
       root.querySelectorAll("#answers [data-a]").forEach(function (b) {
         var i = +b.dataset.a; b.disabled = true;
@@ -662,10 +844,15 @@
       });
       var cf = root.querySelector("#confirm"); if (cf) cf.remove();
       var sc = root.querySelector("#scorecell"); if (sc) sc.textContent = g.score;
+      var bn = root.querySelector(".bankcell"); if (bn) bn.innerHTML = I.coin + " " + g.bank;
       var last = g.i + 1 >= g.qs.length;
-      var streakHtml = ok && g.streak >= 2 ? '<span class="streak">Racha ×' + g.streak + "</span>" : "";
+      var streakHtml = ok && g.streak >= 2 ? '<span class="streak">' + I.flame + " x" + g.streak + "</span>" : "";
+      var ptsTxt;
+      if (g.opts.mode === "apuesta") ptsTxt = (val >= 0 ? "+" + val : val) + " fichas" + (g.rescued ? " · ¡Rescate!" : "");
+      else ptsTxt = ok && val ? "+" + val + " puntos" : ok ? "¡Bien!" : "0 puntos";
+      g.rescued = false;
       var v = el('<div class="verdict ' + (ok ? "ok" : "no") + '"><span class="tag">' + (ok ? "Correcto" : "Incorrecto") + "</span>" +
-        '<span class="pts">' + (ok && gained ? "+" + gained + " puntos" : ok ? "¡Bien!" : "0 puntos") + "</span>" + streakHtml +
+        '<span class="pts">' + ptsTxt + "</span>" + streakHtml +
         '<button class="btn ' + (ok ? "btn-azul" : "btn-negro") + '" id="next" style="margin-left:auto">' + (last ? "Ver resultado" : "Siguiente " + I.arrow) + "</button></div>");
       root.querySelector(".game-stage").appendChild(v);
       root.querySelector("#next").addEventListener("click", next);
@@ -676,44 +863,64 @@
     function finish() {
       clearInterval(timer);
       var total = g.qs.length, acc = Math.round((g.correct / total) * 100);
+      // Estadísticas persistentes / XP / logros
+      var s = db.stats || (db.stats = defStats());
+      var lvBefore = level(s.xp);
+      s.xp += g.xpGain; s.games += 1; s.correct += g.correct; s.questions += total;
+      s.bestScore = Math.max(s.bestScore, g.score); s.bestStreak = Math.max(s.bestStreak, g.best);
+      if (g.opts.mode === "apuesta") s.maxBank = Math.max(s.maxBank, g.maxBank || g.bank);
+      if (acc === 100) s.perfect = true;
+      s.history.unshift({ title: g.quiz.title, score: g.score, acc: acc, mode: g.opts.mode, date: Date.now() });
+      s.history = s.history.slice(0, 30);
+      var newAch = [];
+      ACHV.forEach(function (a) { if (s.achievements.indexOf(a.id) < 0 && a.test(s)) { s.achievements.push(a.id); newAch.push(a); } });
+      var lvAfter = level(s.xp), leveled = lvAfter > lvBefore;
+      saveDb();
+
+      // Mejores puntuaciones del cuestionario (por dispositivo)
       var key = g.opts.payload ? "p" + hash32(g.opts.payload) : "t" + hash32(g.quiz.title);
       db.scores = db.scores || {}; db.scores[key] = db.scores[key] || [];
-      var entry = { name: g.opts.name, score: g.score, acc: acc, date: Date.now() };
-      db.scores[key].push(entry); db.scores[key].sort(function (a, b) { return b.score - a.score; });
+      db.scores[key].push({ name: g.opts.name, score: g.score, acc: acc, date: Date.now() });
+      db.scores[key].sort(function (a, b) { return b.score - a.score; });
       db.scores[key] = db.scores[key].slice(0, 20); saveDb();
+
       var grade = acc >= 90 ? "Excelente" : acc >= 70 ? "Muy bien" : acc >= 50 ? "Aprobado" : acc >= 30 ? "Sigue practicando" : "A repasar";
-      var best = db.scores[key].slice(0, 5).map(function (s, i) {
-        return '<div class="between" style="border-top:2px solid var(--linea);padding:8px 0"><span class="tnum" style="font-weight:800">' + (i + 1) + ". " + esc(s.name) +
-          '</span><span class="tnum" style="font-weight:800;color:var(--azul)">' + s.score + "</span></div>";
+      var best = db.scores[key].slice(0, 5).map(function (x, i) {
+        return '<div class="between" style="border-top:2px solid var(--linea);padding:8px 0"><span class="tnum" style="font-weight:800">' + (i + 1) + ". " + esc(x.name) +
+          '</span><span class="tnum" style="font-weight:800;color:var(--azul)">' + x.score + "</span></div>";
       }).join("");
+      var achHtml = newAch.length ? '<div class="mt-3"><div class="eyebrow">¡Logros desbloqueados!</div><div class="achv-grid">' +
+        newAch.map(function (a) { return '<div class="achv got"><span class="em">' + a.em + '</span><span><span class="t">' + a.t + "</span></span></div>"; }).join("") + "</div>" : "";
+      var lvHtml = leveled ? '<div class="mult-badge hot" style="font-size:15px;padding:8px 14px">' + I.flame + " ¡Subiste a nivel " + lvAfter + "!</div>" : "";
+
       root.innerHTML = topbarStatic() +
         '<div class="game-stage"><div class="result">' +
-        '<div class="eyebrow">Resultado · ' + esc(g.opts.name) + "</div>" +
+        '<div class="eyebrow">Resultado · ' + esc(g.opts.name) + (g.opts.mode === "apuesta" ? " · Apuesta" : "") + "</div>" +
         '<div class="score tnum">' + g.score + "</div>" +
-        '<div class="index-num" style="font-size:22px;color:var(--rojo);text-transform:uppercase;font-weight:800">' + grade + "</div>" +
+        '<div class="between" style="justify-content:flex-start;gap:14px"><div class="index-num" style="font-size:22px;color:var(--rojo);text-transform:uppercase;font-weight:800">' + grade + "</div>" + lvHtml + "</div>" +
         '<div class="result-stats"><div class="rs azul"><div class="n tnum">' + g.correct + '</div><div class="l">Aciertos</div></div>' +
         '<div class="rs rojo"><div class="n tnum">' + (total - g.correct) + '</div><div class="l">Fallos</div></div>' +
         '<div class="rs"><div class="n tnum">' + acc + '%</div><div class="l">Precisión</div></div>' +
-        '<div class="rs"><div class="n tnum">' + g.best + '</div><div class="l">Mejor racha</div></div></div>' +
+        '<div class="rs"><div class="n tnum">+' + g.xpGain + '</div><div class="l">XP ganada</div></div></div>' +
+        achHtml +
         (best ? '<div class="mt-3"><div class="eyebrow">Mejores puntuaciones (este dispositivo)</div>' + best + "</div>" : "") +
         '<div class="row mt-3"><button class="btn btn-rojo btn-lg" id="again">' + I.play + " Jugar otra vez</button>" +
+        '<button class="btn btn-lg" id="progress">' + I.chart + " Mi progreso</button>" +
         '<button class="btn btn-lg" id="exit">' + I.home + " Salir</button></div>" +
         "</div></div>";
       root.querySelector("#again").addEventListener("click", function () { var q = g.quiz, o = g.opts; cleanup(); start(q, o); });
-      root.querySelector("#exit").addEventListener("click", function () { var prev = g.opts.preview; cleanup(); if (prev) { go("#docente"); } else { go("#inicio"); } });
+      root.querySelector("#progress").addEventListener("click", function () { cleanup(); go("#progreso"); });
+      root.querySelector("#exit").addEventListener("click", function () { var prev = g.opts.preview; cleanup(); go(prev ? "#docente" : "#inicio"); });
     }
-    function topbarStatic() {
-      return '<div class="game-top"><button class="game-quit cell" id="qq">' + I.back + " Salir</button>" +
-        '<div class="cell grow"></div><div class="cell">Resultado</div></div>';
-    }
+    function topbarStatic() { return '<div class="game-top"><button class="game-quit cell" id="qq">' + I.back + ' Salir</button><div class="cell grow"></div><div class="cell">Resultado</div></div>'; }
 
     function quit() {
       if (g && g.phase !== "result" && !confirm("¿Salir del cuestionario? Se perderá el progreso.")) return;
-      var prev = g && g.opts.preview; cleanup(); if (prev) go("#docente"); else go("#inicio");
+      var prev = g && g.opts.preview; cleanup(); go(prev ? "#docente" : "#inicio");
     }
     function cleanup() { clearInterval(timer); document.removeEventListener("keydown", keys); if (root) root.remove(); root = null; g = null; }
 
-    return { start: start };
+    return { start: start, abort: function () { if (g || root) cleanup(); } };
   })();
 
   function hash32(s) { var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h.toString(36); }
@@ -740,9 +947,7 @@
   }
   function safeName(n) { return n.replace(/[^\w.\-]+/g, "-").toLowerCase(); }
   function svgToPng(svg, size, filename) {
-    var img = new Image();
-    var blob = new Blob([svg], { type: "image/svg+xml" });
-    var url = URL.createObjectURL(blob);
+    var img = new Image(); var blob = new Blob([svg], { type: "image/svg+xml" }); var url = URL.createObjectURL(blob);
     img.onload = function () {
       var cv = document.createElement("canvas"); cv.width = cv.height = size;
       var ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, size, size);
@@ -753,7 +958,6 @@
     img.src = url;
   }
 
-  // PWA install prompt
   var deferredPrompt = null;
   window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferredPrompt = e; showInstall(); });
   function showInstall() { var b = document.getElementById("installbar"); if (b && deferredPrompt) b.classList.remove("hidden"); }
@@ -761,13 +965,11 @@
     if (deferredPrompt) showInstall();
     var btn = document.getElementById("installbtn");
     if (btn) btn.addEventListener("click", function () {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
+      if (!deferredPrompt) return; deferredPrompt.prompt();
       deferredPrompt.userChoice.finally(function () { deferredPrompt = null; var b = document.getElementById("installbar"); if (b) b.classList.add("hidden"); });
     });
   }
 
-  // Service worker
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () { navigator.serviceWorker.register("./sw.js").catch(function () {}); });
   }
