@@ -25,8 +25,8 @@
   --borde: 2px; /* grosor de línea estándar */
   --borde-fuerte: 4px;
 
-  --sans: "Inter", "Helvetica Neue", Helvetica, Arial, "Segoe UI", Roboto, system-ui,
-    -apple-system, sans-serif;
+  --sans: "Helvetica Neue", Helvetica, Arial, "Segoe UI", Roboto, system-ui, -apple-system,
+    sans-serif;
   --maxw: 1200px;
 
   color-scheme: light;

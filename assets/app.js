@@ -28,6 +28,9 @@
     trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
     install: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 8v6M9 11l3 3 3-3"/></svg>',
     home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>',
+    moon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+    arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
   };
   // Formas geométricas (posición de respuesta)
   var GLYPH = [
@@ -190,7 +193,7 @@
       '<button data-nav="inicio">' + I.home + "<span>Inicio</span></button>" +
       '<button data-nav="unirse">' + I.student + "<span>Unirme</span></button>" +
       '<button data-nav="docente">' + I.teacher + "<span>Docente</span></button>" +
-      '<button data-theme title="Tema">' + (isDark ? "☀" : "☾") + "</button>" +
+      '<button data-theme title="Cambiar tema" aria-label="Cambiar tema">' + (isDark ? I.sun : I.moon) + "</button>" +
       "</nav></div></header>" +
       "<main><div class=\"wrap\">" + inner + "</div></main>" +
       '<footer class="footer"><div class="wrap"><span>QUIZ · PWA offline</span><span>Bauhaus / Estilo Internacional</span><span>Instalable · Acceso por QR</span></div></footer>'
@@ -663,7 +666,7 @@
       var streakHtml = ok && g.streak >= 2 ? '<span class="streak">Racha ×' + g.streak + "</span>" : "";
       var v = el('<div class="verdict ' + (ok ? "ok" : "no") + '"><span class="tag">' + (ok ? "Correcto" : "Incorrecto") + "</span>" +
         '<span class="pts">' + (ok && gained ? "+" + gained + " puntos" : ok ? "¡Bien!" : "0 puntos") + "</span>" + streakHtml +
-        '<button class="btn ' + (ok ? "btn-azul" : "btn-negro") + '" id="next" style="margin-left:auto">' + (last ? "Ver resultado" : "Siguiente →") + "</button></div>");
+        '<button class="btn ' + (ok ? "btn-azul" : "btn-negro") + '" id="next" style="margin-left:auto">' + (last ? "Ver resultado" : "Siguiente " + I.arrow) + "</button></div>");
       root.querySelector(".game-stage").appendChild(v);
       root.querySelector("#next").addEventListener("click", next);
     }
